@@ -9,7 +9,7 @@ import (
 // sends an example json message over udp to localhost:3333 and exits
 func main() {
 
-  msg := "{\"source\": \"17\", \"flavor\": \"start_touch\", \"choice\": \"right\"}"
+  msg := "{\"source\": 17, \"flavor\": \"start_touch\", \"choice\": \"right\"}"
 
   // connect to local udp server on port 3333
   conn, err := net.Dial("udp", "127.0.0.1:3333")

@@ -1,7 +1,6 @@
 package main
 
 import (
-  "fmt"
   "log"
   "net"
   "encoding/json"
@@ -14,9 +13,9 @@ import (
 // 	"choice": "left" | "right"
 // }
 type TeensyMsg struct {
-  Source  int
-  Flavor  string
-  Choice  string
+  Source  int     `json:"source"`
+  Flavor  string  `json:"flavor"`
+  Choice  string  `json:"choice"`
 }
 
 // listens for incoming json teensy messages over udp on port 3333
@@ -30,23 +29,23 @@ func TeensySocket(ch chan TeensyMsg) {
   }
   defer pc.Close()
 
-  fmt.Println("listening for incoming teensy udp packets on port 3333")
+  log.Println("listening for incoming teensy udp packets on port 3333")
 
   // loop and handle packets
   buffer := make([]byte, 1024)
   for {
 
     // try to read a new udp packet into buffer (blocks until success)
-    msg_size, src_addr, err := pc.ReadFrom(buffer)
+    msg_size, _, err := pc.ReadFrom(buffer)
     if err != nil {
-      log.Error(err)
+      log.Printf("ERROR: %v", err)
     } else {
 
       // unmarshal buffer into a teensy message
       var msg TeensyMsg
       err := json.Unmarshal(buffer[:msg_size], &msg)
       if err != nil {
-        log.Error(err)
+        log.Printf("ERROR unmarshalling %v: %v", string(buffer[:msg_size]), err)
       } else {
 
         // send message up channel
