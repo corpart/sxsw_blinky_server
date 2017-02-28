@@ -35,7 +35,7 @@ func main() {
   go TeensySocket(tch)
 
   // listen for data clients on ws port 8888 and pass them up channel
-  go DataSocket(dch)
+  go DataSocket(dch, tch)
 
   // loop over
   for {

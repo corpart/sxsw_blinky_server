@@ -1,5 +1,7 @@
 <html>
-<head></head>
+<head>
+  <script src="js/libs/d3.min.js"></script>
+</head>
 <body>
     <script type="text/javascript">
         var sock = null;
@@ -24,17 +26,25 @@
             }
         };
 
-        function send() {
-            var msg = document.getElementById('message').value;
+        function send(msgid) {
+            var msg = document.getElementById(msgid).value;
             sock.send(msg);
         };
     </script>
     <h1>WebSocket Echo Test</h1>
-    <form onsubmit="send(); return false;">
+    <form onsubmit="send('message1'); return false;">
         <p>
-            Message: <input id="message" type="text" value="Hello, world!">
+            Message: <input id="message1" type="text" value='{"source":101,"flavor":"start_touch","choice":"right","word":""}'>
         </p>
     </form>
-    <button onclick="send();">Send Message</button>
+    <button onclick="send('message1');">Send Message</button>
+
+    <form onsubmit="send('message2'); return false;">
+        <p>
+            Message: <input id="message2" type="text" value='{"source":101,"flavor":"end_touch","choice":"right","word":""}'>
+        </p>
+    </form>
+    <button onclick="send('message2');">Send Message</button>
+
 </body>
 </html>
