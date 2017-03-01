@@ -56,7 +56,7 @@ func main() {
             sdx = i
           }
         }
-        if sdx > -1 {
+        if sdx < 0 {
           log.Printf("ERROR: unrecognized touch beat source '%v'\n", tm.Source)
         } else {
           vote_stn_beats[sdx] = NowMs() // set last beat time to now
