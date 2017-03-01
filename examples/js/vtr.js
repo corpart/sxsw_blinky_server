@@ -1,84 +1,86 @@
 // requires d3!
-console.log("loading Vtr!");
+console.log("loading vtr.sckt!");
 
-var Vtr = function (filename, bubblefunc) {
-  this.msmx = 5000; // max touch duration in milliseconds
-  this.rmn = 5; // min radius in pixels
-  this.rmx = 15; // max radius in pixels
+var vtr = {};
+
+
+vtr.sckt = function (wsuri, btnfilename, startvote, endvote) {
+  var self = this; // http://stackoverflow.com/questions/20279484/how-to-access-the-correct-this-inside-a-callback
+
+  self.wsuri = wsuri; // websocket uri to connect to
 
   // set function to push new bubbles
-  this.pushbubble = bubblefunc;
-
-  // load vote station data
-  this.stns = {};
-  this.tchs = {}  // data structure to track open touches
-  d3.json(filename, function(error, data) {
-
-  data.forEach(function(d) {
-    var k = d.source + d.choice;
-    this.stns[k] = {
-      "id": +d.id,
-      "source": d.source,
-      "choice": d.choice,
-      "x3": +d.x3,
-      "y3": +d.y3
-    };
-    this.tchs[k] = -1;
-  });
+  self.startvote = startvote;
+  self.endvote = endvote;
 
   // open websocket to control server
-  this.sckt = new WebSocket("ws://127.0.0.1:8888");
-  this.sckt.onopen = function() {
+  self.ws = new WebSocket(self.wsuri);
+
+  self.ws.onopen = function() {
       console.log("connected to " + wsuri);
   }
 
-  this.sckt.onclose = function(e) {
+  self.ws.onclose = function(e) {
       console.log("connection closed (" + e.code + ")");
   }
 
-  this.sckt.onmessage = function(e) {
+  // pass messages to handle message method
+  self.ws.onmessage = function(e) {
       console.log("message received: " + e.data);
-      this.handlemsg(e.data);
+      self.handlemsg(JSON.parse(e.data));
   }
+
+  // load vote station data
+  self.stns = {};
+  d3.json(btnfilename, function(error, data) {
+    data.forEach(function (d) {
+      var k = d.source + d.choice;
+      self.stns[k] = {
+        "id": +d.id,
+        "source": d.source,
+        "choice": d.choice
+      };
+    });
+  });
 }
 
-Vtr.prototype = {
+vtr.sckt.prototype = {
 
-  constructor: Vtr,
+  constructor: vtr.sckt,
 
   handlemsg: function (msg) {
 
-    if (msg.flavor === "start_touch") {
-      var k = msg.source + msg.choice;
-      if (k in this.tchs) {
-        this.tchs[k] = Date.now(); // set timestamp for touch start
-      } else {
-        console.log("cant start touch from unexpected source: " + msg);
-      }
-
-    } else if (msg.flavor === "end_touch") {
-      var k = msg.source + msg.choice;
-      if (k in this.tchs) {
-        if (this.tchs[k] > 0) {
-          var ms = Date.now() - this.tchs[k]; // get millis since start touch
-          r = this.ms2r(ms);
-          stn = this.stns[k]
-
-          // call external pushbubble func
-          this.pushbubble(stn.x3, stn.y3, r, stn.id);
-          
-        } else {
-          console.log("cant end unstarted touch: " + msg);
-        }
-      } else {
-        console.log("cant end touch from unexpected source: " + msg);
-      }
+    // reject messages without a flavor key
+    if (! ("flavor" in msg)) {
+      console.log("cant handle unexpected message format: " + msg);
+      return;
     }
-  },
 
-  ms2r: function(ms) {
-    ms = Math.min(ms, this.msmx);
-    return this.rmn + (this.rmx - this.rmn) * ms / this.msmx;
+    // only handle start & end touch messages
+    if (! (msg.flavor === "start_touch" || msg.flavor === "end_touch")) {
+      return;
+    }
+
+    // build vote station key & check that key is in station index
+    var k = msg.source + msg.choice;
+    if (! (k in this.stns)) {
+      console.log("cant accept touch from unexpected source: " + msg);
+      return;
+    }
+
+    // get station id
+    var sid = this.stns[k].id;
+
+    // if this is start touch message call start vote
+    if (msg.flavor === "start_touch") {
+      console.log("starting vote for station: " + sid);
+      this.startvote(sid);
+      return;
+    }
+
+    // otherwise call end vote
+    console.log("ending vote for station: " + sid);
+    this.endvote(sid);
+    return;
   }
-
 }
