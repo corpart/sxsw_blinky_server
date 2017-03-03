@@ -50,11 +50,14 @@ func main() {
 	fmt.Println("topos:")
 	for i, topo := range blnkr.Topos {
 		fmt.Printf("< %v\n", float32(i+1)*blnkr.TopoStep)
-		for _, p := range topo {
-			fmt.Println(*p)
+		for _, pr := range topo {
+			fmt.Println(blnkr.Lmps[pr.IP].Pnts[pr.Dx])
 		}
 		fmt.Println()
 	}
+
+	// buffered channel to pass vote colors to blnkr
+	rgbch := make(chan RGB, 64)
 
 	// buffered channel to receive udp teensymsgs
 	tch := make(chan TeensyMsg, 64)
@@ -70,6 +73,9 @@ func main() {
 
 	// listen for data clients on ws port 8888 and pass them up channel
 	go DataSocket(dch, tch)
+
+	// pass color channel to blnkr udpcast routine
+	go blnkr.Cast(rgbch)
 
 	// loop over
 	for {
@@ -97,10 +103,16 @@ func main() {
 				}
 
 			case "start_touch", "end_touch": // broadcast to data clients
-				wrdr.LogTouch(tm.Source, tm.Flavor, tm.Choice)
+				wrdp, err := wrdr.LogTouch(tm.Source, tm.Flavor, tm.Choice)
+				if err != nil {
+					log.Printf("ERROR: cant log touch: %v", err)
+				} else if tm.Flavor == "end_touch" {
+					rgbch <- wrdp.Clr
+				}
 
 				dm := DataMsg{Source: tm.Source, Flavor: tm.Flavor, Choice: tm.Choice}
 				bcastMsg(dm, dcdx)
+
 			}
 
 		// incoming data client channel

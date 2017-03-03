@@ -2,7 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"time"
@@ -126,13 +127,13 @@ func (w Wrdr) LogPost(wrddx int, nwwrd string, stmp int64) {
 }
 
 // LogTouch - write touch event to json log file
-func (w Wrdr) LogTouch(src int, flvr string, chc string) {
+func (w Wrdr) LogTouch(src int, flvr string, chc string) (*Wrd, error) {
 	stmp := NowMs()
 	wrddx := w.Dex(src, chc)
 	if wrddx < 0 {
-		log.Printf(
-			"ERROR: failed to log touch from unexpected source '%v' '%v'", src, chc)
-		return
+		emsg := fmt.Sprintf(
+			"failed to log touch from unexpected source '%v' '%v'", src, chc)
+		return nil, errors.New(emsg)
 	}
 	wrd := w.Wrds[wrddx]
 	if stmp < w.Stmps[wrddx] { // check if word has loaded yet
@@ -147,6 +148,8 @@ func (w Wrdr) LogTouch(src int, flvr string, chc string) {
 		Time:   stmp,
 	}
 	w.Lgr.Encode(&lg)
+
+	return &wrd, nil
 }
 
 // DeDex - get vote station source address & side from index
