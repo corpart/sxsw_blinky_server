@@ -17,10 +17,10 @@ const LampSize = 16
 const UDPPort = "3333"
 
 // UpdateDelay - delay between lamp udpcasts
-var UpdateDelay = int64(200)
+const UpdateDelay = 33 // ~30hz
 
-// WvDelay - delay between
-var WvDelay = int64(4000)
+// WvDelay - delay between starting new waves
+const WvDelay = 4000
 
 // StrkThrsh - threshold for color streak to change inwaves
 var StrkThrsh = int(7)
@@ -187,10 +187,16 @@ func (blnkr *Blnkr) UDPCast() {
 
 // Cast - routine to loop & update leds
 func (blnkr *Blnkr) Cast(rgbch chan RGB) {
-	lastupdate := NowMs()
-	lastwv := NowMs()
 	lastclr := RGB{}
 	clrstrk := 0
+
+	// trigger wave updates
+	uch := make(chan bool)
+	go Metronome(uch, UpdateDelay)
+
+	// trigger new waves
+	wch := make(chan bool)
+	go Metronome(wch, WvDelay)
 
 	for {
 		select {
@@ -207,24 +213,17 @@ func (blnkr *Blnkr) Cast(rgbch chan RGB) {
 				lastclr = c
 			}
 
-		default:
-			nw := NowMs()
+		// update waves & udpcast
+		case _ = <-uch:
+			blnkr.updateWvs()
+			blnkr.UDPCast()
 
-			// update waves & udpcast
-			if lastupdate+UpdateDelay < nw {
-				lastupdate = nw
-				blnkr.updateWvs()
-				blnkr.UDPCast()
-			}
-
-			// generate new inwaves
-			if lastwv+WvDelay < nw {
-				lastwv = nw
-				if clrstrk >= StrkThrsh {
-					blnkr.makeInWv(lastclr)
-				} else {
-					blnkr.makeInWv(WvClr)
-				}
+		// generate new inwaves
+		case _ = <-wch:
+			if clrstrk >= StrkThrsh {
+				blnkr.makeInWv(lastclr)
+			} else {
+				blnkr.makeInWv(WvClr)
 			}
 		}
 	}

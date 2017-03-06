@@ -5,10 +5,11 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
 )
 
 // CycleDelay - delay between cycling words in milliseconds
-var CycleDelay = int64(20000)
+const CycleDelay = 20000
 
 // listens for incoming udp packets on port 3333 and prints them to stdout
 func main() {
@@ -16,7 +17,6 @@ func main() {
 	// ordered list of vote station addresses & last beats
 	votestns := []int{101, 102, 103}
 	votestnbeats := make([]int64, len(votestns))
-	lastcycle := NowMs() // timestamp of last word cycle event
 
 	// open file to log word & vote events
 	// create wrdr to manage cycling words & writing events to json logfile
@@ -68,6 +68,10 @@ func main() {
 	// index of connected clients
 	dcdx := make(map[string]DataClient)
 
+	// channel to trigger word cycling
+	cych := make(chan bool)
+	go Metronome(cych, CycleDelay)
+
 	// listen for teensy messages on udp port 3333 and pass them up channel
 	go TeensySocket(tch)
 
@@ -77,15 +81,8 @@ func main() {
 	// pass color channel to blnkr udpcast routine
 	go blnkr.Cast(rgbch)
 
-	// loop over
-	q := 0
+	// loop over channels & handle messages
 	for {
-		q++
-		if q == 1<<23 {
-			q = 0
-			fmt.Printf("*")
-		}
-
 		select {
 
 		// incoming teensy message channel
@@ -135,22 +132,11 @@ func main() {
 			fmt.Printf("$")
 
 		// cycle words at intervals
-		default:
-			nw := NowMs()
-			if lastcycle+CycleDelay < nw {
-				fmt.Printf("[")
-				lastcycle = nw        // reset last cycle timestamp
-				dm := wrdr.CycleWrd() // pick a new word & gen message
-				bcastMsg(dm, dcdx)    // broadcast message to data clients
-				fmt.Printf("]")
-			}
-
-			if q == 0 {
-				fmt.Printf("^")
-			}
-		}
-		if q == 0 {
-			fmt.Printf("&")
+		case _ = <-cych:
+			fmt.Printf("[")
+			dm := wrdr.CycleWrd() // pick a new word & gen message
+			bcastMsg(dm, dcdx)    // broadcast message to data clients
+			fmt.Printf("]")
 		}
 	}
 }
@@ -164,5 +150,14 @@ func bcastMsg(dm DataMsg, dcdx map[string]DataClient) {
 			close(dc.MsgCh)
 			delete(dcdx, dest)
 		}
+	}
+}
+
+// Metronome - send boolean true down channel at given interval
+func Metronome(ch chan bool, ms int64) {
+	beat := time.Duration(ms) * time.Millisecond
+	for {
+		time.Sleep(beat)
+		ch <- true
 	}
 }
