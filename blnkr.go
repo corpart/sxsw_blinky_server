@@ -170,6 +170,8 @@ func (blnkr *Blnkr) UDPCast() {
 		if err != nil {
 			log.Printf("ERROR: failed to send udp message to lamp at %v: %v", dst, err)
 		}
+
+		// log.Printf("udpcast: %v", buf.Bytes())
 	}
 }
 
@@ -220,8 +222,8 @@ func (blnkr *Blnkr) Cast(rgbch chan RGB) {
 func (blnkr *Blnkr) makeInWv(clr RGB) {
 	wv := Wv{
 		SD:   1.3,
-		Dlta: -1.0,
-		Xs:   3.0,
+		Dlta: -0.5,
+		Xs:   6.0,
 		Ys:   2.0,
 		Clr:  clr,
 	}
@@ -232,8 +234,8 @@ func (blnkr *Blnkr) makeInWv(clr RGB) {
 func (blnkr *Blnkr) makeOutWv(clr RGB) {
 	wv := Wv{
 		SD:   1.0,
-		Dlta: 3.0,
-		Xs:   2.0,
+		Dlta: 1.5,
+		Xs:   4.0,
 		Ys:   1.0,
 		Clr:  clr,
 	}
@@ -254,7 +256,14 @@ func (wv *Wv) ColorAt(x float64) RGB {
 	dlta := math.Abs(wv.Mn - x) // get distance from wave mean to position
 	dlta = dlta / wv.Xs         // divide distance by wave xscale
 	y := wv.Pdf(dlta) * wv.Ys
-	return wv.Clr.Dim(y)
+
+	nwclr := wv.Clr.Dim(y)
+
+	// if y > 0.1 {
+	// 	fmt.Printf("{%.2f %v}", y, nwclr)
+	// }
+
+	return nwclr
 }
 
 func (blnkr *Blnkr) updateWvs() {
@@ -265,11 +274,13 @@ func (blnkr *Blnkr) updateWvs() {
 		wv.Mn += wv.Dlta // update mean (position) by dlta
 
 		// check if wv is still in range of lmps
-		mn := -wv.SD * 4.0 * wv.Ys
-		mx := blnkr.Mxr + (wv.SD * 3.0 * wv.Ys)
+		mn := -wv.SD * 4.0 * wv.Xs
+		mx := blnkr.Mxr + (wv.SD * 4.0 * wv.Xs)
 		if wv.Mn > mn && wv.Mn < mx {
 			wvs = append(wvs, wv)
 		}
+
+		// log.Printf("wv %v: %v", i, wv)
 	}
 	blnkr.Wvs = wvs
 
