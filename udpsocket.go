@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 )
@@ -34,6 +35,7 @@ func TeensySocket(ch chan TeensyMsg) {
 	// loop and handle packets
 	buffer := make([]byte, 1024)
 	for {
+		fmt.Printf("#")
 
 		// try to read a new udp packet into buffer (blocks until success)
 		msgsize, _, err := pc.ReadFrom(buffer)
@@ -49,7 +51,11 @@ func TeensySocket(ch chan TeensyMsg) {
 			} else {
 
 				// send message up channel
-				ch <- msg
+				select {
+				case ch <- msg:
+				default:
+					log.Printf("ERROR: teensy message channel full!")
+				}
 			}
 		}
 	}

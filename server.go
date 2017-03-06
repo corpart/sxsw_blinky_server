@@ -78,7 +78,14 @@ func main() {
 	go blnkr.Cast(rgbch)
 
 	// loop over
+	q := 0
 	for {
+		q++
+		if q == 1<<23 {
+			q = 0
+			fmt.Printf("*")
+		}
+
 		select {
 
 		// incoming teensy message channel
@@ -107,33 +114,55 @@ func main() {
 				if err != nil {
 					log.Printf("ERROR: cant log touch: %v", err)
 				} else if tm.Flavor == "end_touch" {
-					rgbch <- wrdp.Clr
+					select {
+					case rgbch <- wrdp.Clr:
+					default:
+						log.Printf("ERROR: rgbch full!")
+					}
 				}
 
 				dm := DataMsg{Source: tm.Source, Flavor: tm.Flavor, Choice: tm.Choice}
 				bcastMsg(dm, dcdx)
-
 			}
+
+			fmt.Printf("@")
 
 		// incoming data client channel
 		case dc := <-dch:
 			log.Printf("new data client at %v", dc.Dest)
 			dcdx[dc.Dest] = dc // append data client to index
 
+			fmt.Printf("$")
+
 		// cycle words at intervals
 		default:
 			nw := NowMs()
 			if lastcycle+CycleDelay < nw {
+				fmt.Printf("[")
 				lastcycle = nw        // reset last cycle timestamp
 				dm := wrdr.CycleWrd() // pick a new word & gen message
 				bcastMsg(dm, dcdx)    // broadcast message to data clients
+				fmt.Printf("]")
 			}
+
+			if q == 0 {
+				fmt.Printf("^")
+			}
+		}
+		if q == 0 {
+			fmt.Printf("&")
 		}
 	}
 }
 
 func bcastMsg(dm DataMsg, dcdx map[string]DataClient) {
-	for _, dc := range dcdx {
-		dc.MsgCh <- dm
+	for dest, dc := range dcdx {
+		select {
+		case dc.MsgCh <- dm:
+		default:
+			log.Printf("ERROR: msgch for %v full!", dc.Dest)
+			close(dc.MsgCh)
+			delete(dcdx, dest)
+		}
 	}
 }

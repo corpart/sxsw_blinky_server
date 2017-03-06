@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -36,16 +37,21 @@ func DataSocket(dch chan DataClient, tch chan TeensyMsg) {
 
 		// pass dataclient with message chan back to server over dataclient chan
 		dc := DataClient{make(chan DataMsg, 64), ws.Request().RemoteAddr}
-		dch <- dc
+		select {
+		case dch <- dc:
+		default:
+			log.Printf("ERROR: dch full!")
+		}
 
 		// start goroutine to forward teensy messages from dataclient
 		go func(iws *websocket.Conn) { // unique inner ws is passed with each call
 			for {
+				fmt.Printf("{-%v-", iws.Request().RemoteAddr)
 				var reply string
 
 				if err := websocket.Message.Receive(iws, &reply); err != nil {
 					log.Println("ERROR: failed to receive reply from client " + dc.Dest)
-					break
+					return
 				}
 
 				// unmarshal reply into a teensy message
@@ -56,13 +62,19 @@ func DataSocket(dch chan DataClient, tch chan TeensyMsg) {
 				} else {
 
 					// send message down teensy message channel
-					tch <- msg
+					select {
+					case tch <- msg:
+					default:
+						log.Printf("ERROR: tch full! discarding message %v", msg)
+					}
 				}
+				fmt.Printf("}\n")
 			}
 		}(ws)
 
 		// loop and forward messages from datamsg channel to remote client
 		for dm := range dc.MsgCh {
+			fmt.Printf("{+%v+", dc.Dest)
 			msg, err := json.Marshal(dm)
 			if err != nil {
 				log.Println("ERROR: failed to marshal data message!")
@@ -73,6 +85,7 @@ func DataSocket(dch chan DataClient, tch chan TeensyMsg) {
 					return
 				}
 			}
+			fmt.Printf("}\n")
 		}
 	}))
 
