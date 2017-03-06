@@ -47,15 +47,6 @@ func main() {
 		fmt.Println()
 	}
 
-	fmt.Println("topos:")
-	for i, topo := range blnkr.Topos {
-		fmt.Printf("< %v\n", float32(i+1)*blnkr.TopoStep)
-		for _, pr := range topo {
-			fmt.Println(blnkr.Lmps[pr.IP].Pnts[pr.Dx])
-		}
-		fmt.Println()
-	}
-
 	// buffered channel to pass vote colors to blnkr
 	rgbch := make(chan RGB, 64)
 

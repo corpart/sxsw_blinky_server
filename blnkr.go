@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"log"
+	"math"
 	"net"
 
-	"github.com/go-gl/mathgl/mgl32"
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 // LampSize - # of pnt (led) slots in each lamp
@@ -32,9 +33,9 @@ var WvClr = RGB{0x777, 0x777, 0x777}
 type Led struct {
 	IP    string  `json:"ip"`
 	Index int     `json:"index"`
-	X     float32 `json:"x"`
-	Y     float32 `json:"y"`
-	Z     float32 `json:"z"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	Z     float64 `json:"z"`
 }
 
 // RGB - holds 16 bit rgb color
@@ -50,17 +51,18 @@ func (rgb RGB) Add(o RGB) RGB {
 }
 
 // Dim - multiply color by float & return result
-func (rgb RGB) Dim(f float32) RGB {
+func (rgb RGB) Dim(f float64) RGB {
 	n := RGB{}
 	for i := 0; i < 3; i++ {
-		n[i] = int16(float32(rgb[i]) * f)
+		n[i] = int16(float64(rgb[i]) * f)
 	}
 	return n
 }
 
 // Pnt - position & color of an led in a lamp
 type Pnt struct {
-	Crds mgl32.Vec3
+	Crds mgl64.Vec3
+	Mre  float64 // min radius to epicenter
 	Clr  RGB
 }
 
@@ -70,30 +72,22 @@ type Lmp struct {
 	Pnts [LampSize]Pnt
 }
 
-// PntRf - reference to point in lamp by ip & index
-type PntRf struct {
-	IP string
-	Dx int
-}
-
-// Topo - bucket holding leds within certain dist from epicenters
-type Topo []PntRf
-
 // Wv - wave pattern to render in lmp topos
 type Wv struct {
-	Dx   int
-	Dlta int
+	Mn   float64
+	SD   float64
+	Dlta float64
+	Xs   float64 // xscale for gaussian
+	Ys   float64 // yscale for gaussian
 	Clr  RGB
-	Shp  []float32
 }
 
 // Blnkr - manages collection of leds sorted into topo buckets for wave anim
 type Blnkr struct {
-	Lmps     map[string]*Lmp
-	Topos    []Topo
-	Wvs      []Wv
-	Epcntrs  []mgl32.Vec3
-	TopoStep float32
+	Lmps    map[string]*Lmp
+	Wvs     []Wv
+	Epcntrs []mgl64.Vec3
+	Mxr     float64 // max radius from epicenter
 }
 
 // NewBlnkr - init blnkr with given json file
@@ -109,13 +103,12 @@ func NewBlnkr(jsond []byte) (*Blnkr, error) {
 
 	// create blinkr to hold led data
 	blnkr := Blnkr{
-		TopoStep: 10.0,
-		Epcntrs:  []mgl32.Vec3{{0.0, 0.0, 0.0}, {100.0, 0.0, 0.0}, {200.0, 0.0, 0.0}},
+		Epcntrs: []mgl64.Vec3{{50.0, 0.0, 0.0}, {150.0, 0.0, 0.0}},
 	}
+	mxr := float64(0) // get max (min) radius of leds from epicenters
 
 	// create pnts & lmps & topos from slice of leds
 	lmps := make(map[string]*Lmp)
-	topos := make([]Topo, 1)
 	for _, led := range leds {
 
 		// get lmp for ip; if there is not already a lmp for this ip create it
@@ -125,35 +118,30 @@ func NewBlnkr(jsond []byte) (*Blnkr, error) {
 		lmp := lmps[led.IP]
 
 		// create pnt and add it to lmp at index
-		pnt := Pnt{Crds: mgl32.Vec3{led.X, led.Y, led.Z}}
+		c := mgl64.Vec3{led.X, led.Y, led.Z}
+		r := blnkr.mre(c)
+		if r > mxr {
+			mxr = r
+		}
+		pnt := Pnt{Crds: c, Mre: r}
 		lmp.Pnts[led.Index] = pnt
-		//lmps[led.IP] = lmp
-
-		// add pnt to topo by min distance to epicenter
-		var mndst float32 = -1.0
-		for _, ep := range blnkr.Epcntrs {
-			dst := distance(ep, pnt.Crds)
-			if mndst < 0.0 || dst < mndst {
-				mndst = dst
-			}
-		}
-		if mndst >= 0.0 {
-			tdx := int(mndst / blnkr.TopoStep) // topo bucket index
-
-			// extend list of topo buckets if not already big enough
-			if len(topos) <= tdx {
-				topos = append(topos, make([]Topo, tdx-len(topos)+1)...)
-			}
-
-			// add ref to point in lamp to topo bucket so we can access lamp color
-			topos[tdx] = append(topos[tdx], PntRf{led.IP, led.Index})
-		}
-
 	}
 	blnkr.Lmps = lmps
-	blnkr.Topos = topos
+	blnkr.Mxr = mxr
 
 	return &blnkr, nil
+}
+
+// calculate min radius to epicenter for coordinate
+func (blnkr *Blnkr) mre(crds mgl64.Vec3) float64 {
+	var mndst = -1.0
+	for _, ep := range blnkr.Epcntrs {
+		dst := distance(ep, crds)
+		if mndst < 0.0 || dst < mndst {
+			mndst = dst
+		}
+	}
+	return mndst
 }
 
 // UDPCast - send udp packet with current colors to each lamp
@@ -231,60 +219,75 @@ func (blnkr *Blnkr) Cast(rgbch chan RGB) {
 
 func (blnkr *Blnkr) makeInWv(clr RGB) {
 	wv := Wv{
-		Dx:   len(blnkr.Topos) - 1,
-		Dlta: -1,
+		SD:   1.3,
+		Dlta: -1.0,
+		Xs:   3.0,
+		Ys:   2.0,
 		Clr:  clr,
-		Shp:  []float32{0.2, 0.7, 1.0, 0.8, 0.5, 0.3, 0.1},
 	}
+	wv.Mn = blnkr.Mxr + (wv.SD * 3.0 * wv.Xs)
 	blnkr.Wvs = append(blnkr.Wvs, wv)
 }
 
 func (blnkr *Blnkr) makeOutWv(clr RGB) {
 	wv := Wv{
-		Dx:   -3,
-		Dlta: 2,
+		SD:   1.0,
+		Dlta: 3.0,
+		Xs:   2.0,
+		Ys:   1.0,
 		Clr:  clr,
-		Shp:  []float32{0.1, 0.3, 0.5, 0.2},
 	}
+	wv.Mn = -wv.SD * 3.0 * wv.Xs
 	blnkr.Wvs = append(blnkr.Wvs, wv)
+}
+
+// Pdf - the probability density function, which describes the probability
+// of a random variable taking on the value x
+func (wv *Wv) Pdf(x float64) float64 {
+	m := wv.SD * math.Sqrt(2*math.Pi)
+	e := math.Exp(-math.Pow(x-wv.Mn, 2) / (2 * wv.SD * wv.SD))
+	return e / m
+}
+
+// ColorAt - get color of wave at given radius
+func (wv *Wv) ColorAt(x float64) RGB {
+	dlta := math.Abs(wv.Mn - x) // get distance from wave mean to position
+	dlta = dlta / wv.Xs         // divide distance by wave xscale
+	y := wv.Pdf(dlta) * wv.Ys
+	return wv.Clr.Dim(y)
 }
 
 func (blnkr *Blnkr) updateWvs() {
 
-	// zero lmp colors
-	for _, lmp := range blnkr.Lmps {
-		for i := 0; i < LampSize; i++ {
-			lmp.Pnts[i].Clr = RGB{}
-		}
-	}
-
-	// update waves & apply to topos
+	// update waves
 	wvs := []Wv{}
 	for _, wv := range blnkr.Wvs {
-		wv.Dx += wv.Dlta // update position index by dlta
+		wv.Mn += wv.Dlta // update mean (position) by dlta
 
-		// check if wv is past topos
-		if !((wv.Dlta < 0 && wv.Dx+len(wv.Shp) < 0) || (wv.Dlta > 0 && wv.Dx > len(blnkr.Topos))) {
+		// check if wv is still in range of lmps
+		mn := -wv.SD * 4.0 * wv.Ys
+		mx := blnkr.Mxr + (wv.SD * 3.0 * wv.Ys)
+		if wv.Mn > mn && wv.Mn < mx {
 			wvs = append(wvs, wv)
-
-			// apply wv to topos
-			for i, k := range wv.Shp {
-				dx := i + wv.Dx
-				if dx >= 0 && dx < len(blnkr.Topos) {
-					for _, pr := range blnkr.Topos[dx] {
-						clr := blnkr.Lmps[pr.IP].Pnts[pr.Dx].Clr
-						clr = clr.Add(wv.Clr.Dim(k))
-						blnkr.Lmps[pr.IP].Pnts[pr.Dx].Clr = clr
-					}
-				}
-			}
 		}
 	}
 	blnkr.Wvs = wvs
+
+	// apply waves to lamp points
+	for _, lmp := range blnkr.Lmps {
+		for i := 0; i < LampSize; i++ {
+			clr := RGB{} // start with zeroed color
+			for _, wv := range blnkr.Wvs {
+				wvclr := wv.ColorAt(lmp.Pnts[i].Mre)
+				clr = clr.Add(wvclr)
+			}
+			lmp.Pnts[i].Clr = clr
+		}
+	}
 }
 
 // calculate distance between two vec3s
-func distance(p, q mgl32.Vec3) float32 {
+func distance(p, q mgl64.Vec3) float64 {
 	dlta := q.Sub(p)
 	return dlta.Len()
 }
