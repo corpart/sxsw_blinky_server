@@ -21,6 +21,7 @@ type DataMsg struct {
 	Flavor string `json:"flavor"`
 	Choice string `json:"choice"`
 	Word   string `json:"word"`
+	Color  []int  `json:"color"`
 }
 
 // DataClient - holds channel to goroutine with websocket connection to client

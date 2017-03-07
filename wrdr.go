@@ -110,7 +110,12 @@ func (w Wrdr) CycleWrd() DataMsg {
 
 	nwsrc, nwchc := w.DeDex(wrddx)
 	return DataMsg{
-		Source: nwsrc, Flavor: "new_word", Choice: nwchc, Word: nwwrd.Str}
+		Source: nwsrc,
+		Flavor: "new_word",
+		Choice: nwchc,
+		Word:   nwwrd.Str,
+		Color:  []int{int(nwwrd.Clr[0]), int(nwwrd.Clr[1]), int(nwwrd.Clr[2])},
+	}
 }
 
 // LogPost - write post event to json log file

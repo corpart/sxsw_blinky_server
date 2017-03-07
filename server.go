@@ -120,6 +120,23 @@ func main() {
 			log.Printf("new data client at %v", dc.Dest)
 			dcdx[dc.Dest] = dc // append data client to index
 
+			// initialize data client with current words
+			for i, wrd := range wrdr.Wrds {
+				src, chc := wrdr.DeDex(i)
+				dm := DataMsg{
+					Source: src,
+					Choice: chc,
+					Flavor: "new_word",
+					Word:   wrd.Str,
+					Color:  []int{int(wrd.Clr[0]), int(wrd.Clr[1]), int(wrd.Clr[2])},
+				}
+				select {
+				case dc.MsgCh <- dm:
+				default:
+					log.Printf("ERROR: msgch for %v full on init!?", dc.Dest)
+				}
+			}
+
 			fmt.Printf("$")
 
 		// cycle words at intervals
