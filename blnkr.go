@@ -161,7 +161,7 @@ func (blnkr *Blnkr) UDPCast() {
 		dst := ip + ":" + UDPPort
 		conn, err := net.Dial("udp", dst)
 		if err != nil {
-			log.Printf("ERROR: failed get udp conn for lamp at %v: %v", dst, err)
+			//log.Printf("ERROR: failed get udp conn for lamp at %v: %v", dst, err)
 		}
 		defer conn.Close()
 
