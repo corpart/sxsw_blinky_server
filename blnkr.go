@@ -21,7 +21,7 @@ const UDPPort = "3333"
 const UpdateDelay = 33 // ~30hz
 
 // WvDelay - delay between starting new waves
-const WvDelay = 4000
+const WvDelay = 2000
 
 // StrkThrsh - threshold for color streak to change inwaves
 var StrkThrsh = int(7)
@@ -144,6 +144,7 @@ func NewBlnkr(jsond []byte) (*Blnkr, error) {
 	}
 	blnkr.Lmps = lmps
 	blnkr.Mxrs = mxrs
+	blnkr.Wvs = make([][]Wv, 4)
 
 	return &blnkr, nil
 }
@@ -311,7 +312,11 @@ func (blnkr *Blnkr) updateWvs() {
 			clr := RGB{} // start with zeroed color
 			for edx, wvs := range blnkr.Wvs {
 				for _, wv := range wvs {
-					wvclr := wv.ColorAt(lmp.Pnts[i].Mres[edx])
+					r := float64(0)
+					if len(lmp.Pnts[i].Mres) > 0 {
+						r = lmp.Pnts[i].Mres[edx]
+					}
+					wvclr := wv.ColorAt(r)
 					clr = clr.Add(wvclr)
 				}
 				lmp.Pnts[i].Clr = clr
