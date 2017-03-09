@@ -48,7 +48,7 @@ func main() {
 	}
 
 	// buffered channel to pass vote colors to blnkr
-	rgbch := make(chan RGB, 64)
+	rgbch := make(chan VtClr, 64)
 
 	// buffered channel to receive udp teensymsgs
 	tch := make(chan TeensyMsg, 64)
@@ -103,7 +103,7 @@ func main() {
 					log.Printf("ERROR: cant log touch: %v", err)
 				} else if tm.Flavor == "end_touch" {
 					select {
-					case rgbch <- wrdp.Clr:
+					case rgbch <- VtClr{tm.Source, wrdp.Clr}:
 					default:
 						log.Printf("ERROR: rgbch full!")
 					}

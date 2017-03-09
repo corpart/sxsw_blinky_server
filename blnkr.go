@@ -62,8 +62,14 @@ func (rgb RGB) Dim(f float64) RGB {
 // Pnt - position & color of an led in a lamp
 type Pnt struct {
 	Crds mgl64.Vec3
-	Mre  float64 // min radius to epicenter
+	Mres []float64 // min radius to epicenter
 	Clr  RGB
+}
+
+// VtClr - station & color of vote
+type VtClr struct {
+	Stn int
+	Clr RGB
 }
 
 // Lmp - a lamp with an ip and a list of child leds
@@ -85,9 +91,10 @@ type Wv struct {
 // Blnkr - manages collection of leds sorted into topo buckets for wave anim
 type Blnkr struct {
 	Lmps    map[string]*Lmp
-	Wvs     []Wv
-	Epcntrs []mgl64.Vec3
-	Mxr     float64 // max radius from epicenter
+	Wvs     [][]Wv
+	Epcntrs [][]mgl64.Vec3
+	StnMp   map[int]int // map from vote station source to epicenter index
+	Mxrs    []float64   // max radius from epicenter
 }
 
 // NewBlnkr - init blnkr with given json file
@@ -103,11 +110,17 @@ func NewBlnkr(jsond []byte) (*Blnkr, error) {
 
 	// create blinkr to hold led data
 	blnkr := Blnkr{
-		Epcntrs: []mgl64.Vec3{{50.0, 0.0, 0.0}, {150.0, 0.0, 0.0}},
+		Epcntrs: [][]mgl64.Vec3{
+			[]mgl64.Vec3{{0.0, 0.0, 0.0}, {300.0, 0.0, 0.0}},
+			[]mgl64.Vec3{{80.0, 0.0, 0.0}},
+			[]mgl64.Vec3{{170.0, 0.0, 0.0}},
+			[]mgl64.Vec3{{260.0, 0.0, 0.0}},
+		},
+		StnMp: map[int]int{101: 1, 102: 2, 103: 3},
 	}
-	mxr := float64(0) // get max (min) radius of leds from epicenters
+	mxrs := []float64{0, 0, 0, 0} // get max (min) radius of leds from epicenters
 
-	// create pnts & lmps & topos from slice of leds
+	// create pnts & lmps from slice of leds
 	lmps := make(map[string]*Lmp)
 	for _, led := range leds {
 
@@ -119,23 +132,26 @@ func NewBlnkr(jsond []byte) (*Blnkr, error) {
 
 		// create pnt and add it to lmp at index
 		c := mgl64.Vec3{led.X, led.Y, led.Z}
-		r := blnkr.mre(c)
-		if r > mxr {
-			mxr = r
+		rs := []float64{-1, -1, -1, -1}
+		for i := 0; i < 4; i++ {
+			rs[i] = blnkr.mre(i, c)
+			if rs[i] > mxrs[i] {
+				mxrs[i] = rs[i]
+			}
 		}
-		pnt := Pnt{Crds: c, Mre: r}
+		pnt := Pnt{Crds: c, Mres: rs}
 		lmp.Pnts[led.Index] = pnt
 	}
 	blnkr.Lmps = lmps
-	blnkr.Mxr = mxr
+	blnkr.Mxrs = mxrs
 
 	return &blnkr, nil
 }
 
-// calculate min radius to epicenter for coordinate
-func (blnkr *Blnkr) mre(crds mgl64.Vec3) float64 {
+// calculate min radius to epicenter of given index for coordinate
+func (blnkr *Blnkr) mre(dx int, crds mgl64.Vec3) float64 {
 	var mndst = -1.0
-	for _, ep := range blnkr.Epcntrs {
+	for _, ep := range blnkr.Epcntrs[dx] {
 		dst := distance(ep, crds)
 		if mndst < 0.0 || dst < mndst {
 			mndst = dst
@@ -176,7 +192,7 @@ func (blnkr *Blnkr) UDPCast() {
 }
 
 // Cast - routine to loop & update leds
-func (blnkr *Blnkr) Cast(rgbch chan RGB) {
+func (blnkr *Blnkr) Cast(rgbch chan VtClr) {
 	lastclr := RGB{}
 	clrstrk := 0
 
@@ -192,8 +208,11 @@ func (blnkr *Blnkr) Cast(rgbch chan RGB) {
 		select {
 
 		// create new outwave in word color when vote received
-		case c := <-rgbch:
-			blnkr.makeOutWv(c)
+		case vc := <-rgbch:
+
+			c := vc.Clr
+			edx := blnkr.StnMp[vc.Stn]
+			blnkr.makeOutWv(edx, c)
 
 			// track vote streaks
 			if c == lastclr {
@@ -227,20 +246,20 @@ func (blnkr *Blnkr) makeInWv(clr RGB) {
 		Ys:   2.0,
 		Clr:  clr,
 	}
-	wv.Mn = blnkr.Mxr + (wv.SD * 3.0 * wv.Xs)
-	blnkr.Wvs = append(blnkr.Wvs, wv)
+	wv.Mn = blnkr.Mxrs[0] + (wv.SD * 3.0 * wv.Xs)
+	blnkr.Wvs[0] = append(blnkr.Wvs[0], wv)
 }
 
-func (blnkr *Blnkr) makeOutWv(clr RGB) {
+func (blnkr *Blnkr) makeOutWv(edx int, clr RGB) {
 	wv := Wv{
 		SD:   1.0,
-		Dlta: 1.5,
+		Dlta: 0.2,
 		Xs:   4.0,
 		Ys:   1.0,
 		Clr:  clr,
 	}
 	wv.Mn = -wv.SD * 3.0 * wv.Xs
-	blnkr.Wvs = append(blnkr.Wvs, wv)
+	blnkr.Wvs[edx] = append(blnkr.Wvs[edx], wv)
 }
 
 // Pdf - the probability density function, which describes the probability
@@ -269,30 +288,34 @@ func (wv *Wv) ColorAt(x float64) RGB {
 func (blnkr *Blnkr) updateWvs() {
 
 	// update waves
-	wvs := []Wv{}
-	for _, wv := range blnkr.Wvs {
-		wv.Mn += wv.Dlta // update mean (position) by dlta
+	for edx, wvs := range blnkr.Wvs {
+		nwwvs := []Wv{}
+		for _, wv := range wvs {
+			wv.Mn += wv.Dlta // update mean (position) by dlta
 
-		// check if wv is still in range of lmps
-		mn := -wv.SD * 4.0 * wv.Xs
-		mx := blnkr.Mxr + (wv.SD * 4.0 * wv.Xs)
-		if wv.Mn > mn && wv.Mn < mx {
-			wvs = append(wvs, wv)
+			// check if wv is still in range of lmps
+			mn := -wv.SD * 4.0 * wv.Xs
+			mx := blnkr.Mxrs[edx] + (wv.SD * 4.0 * wv.Xs)
+			if wv.Mn > mn && wv.Mn < mx {
+				nwwvs = append(nwwvs, wv)
+			}
+
+			// log.Printf("wv %v: %v", i, wv)
 		}
-
-		// log.Printf("wv %v: %v", i, wv)
+		blnkr.Wvs[edx] = nwwvs
 	}
-	blnkr.Wvs = wvs
 
 	// apply waves to lamp points
 	for _, lmp := range blnkr.Lmps {
 		for i := 0; i < LampSize; i++ {
 			clr := RGB{} // start with zeroed color
-			for _, wv := range blnkr.Wvs {
-				wvclr := wv.ColorAt(lmp.Pnts[i].Mre)
-				clr = clr.Add(wvclr)
+			for edx, wvs := range blnkr.Wvs {
+				for _, wv := range wvs {
+					wvclr := wv.ColorAt(lmp.Pnts[i].Mres[edx])
+					clr = clr.Add(wvclr)
+				}
+				lmp.Pnts[i].Clr = clr
 			}
-			lmp.Pnts[i].Clr = clr
 		}
 	}
 }
