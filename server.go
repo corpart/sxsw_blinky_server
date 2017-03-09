@@ -109,7 +109,13 @@ func main() {
 					}
 				}
 
-				dm := DataMsg{Source: tm.Source, Flavor: tm.Flavor, Choice: tm.Choice}
+				dm := DataMsg{
+					Source: tm.Source, 
+					Flavor: tm.Flavor, 
+					Choice: tm.Choice,
+					Word: wrdp.Str,
+					Color: []int{int(wrdp.Clr[0]), int(wrdp.Clr[1]), int(wrdp.Clr[2])},
+				}
 				bcastMsg(dm, dcdx)
 			}
 
