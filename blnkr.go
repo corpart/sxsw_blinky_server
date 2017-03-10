@@ -39,13 +39,16 @@ type Led struct {
 }
 
 // RGB - holds 16 bit rgb color
-type RGB [3]int16
+type RGB [3]uint16
 
 // Add - add two colors & return result
 func (rgb RGB) Add(o RGB) RGB {
 	n := RGB{}
 	for i := 0; i < 3; i++ {
 		n[i] = rgb[i] + o[i]
+		if n[i] > 0xfff {
+			n[i] = 0xfff
+		}
 	}
 	return n
 }
@@ -54,7 +57,11 @@ func (rgb RGB) Add(o RGB) RGB {
 func (rgb RGB) Dim(f float64) RGB {
 	n := RGB{}
 	for i := 0; i < 3; i++ {
-		n[i] = int16(float64(rgb[i]) * f)
+		k := uint32(float64(rgb[i]) * f)
+		if k > 0xfff {
+			k = 0xfff
+		}
+		n[i] = uint16(k)
 	}
 	return n
 }
