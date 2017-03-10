@@ -21,7 +21,7 @@ const UDPPort = "3333"
 const UpdateDelay = 33 // ~30hz
 
 // WvDelay - delay between starting new waves
-const WvDelay = 2000
+const WvDelay = 6000
 
 // StrkThrsh - threshold for color streak to change inwaves
 var StrkThrsh = int(7)
@@ -242,8 +242,8 @@ func (blnkr *Blnkr) Cast(rgbch chan VtClr) {
 func (blnkr *Blnkr) makeInWv(clr RGB) {
 	wv := Wv{
 		SD:   1.3,
-		Dlta: -0.5,
-		Xs:   6.0,
+		Dlta: -0.05,
+		Xs:   20.0,
 		Ys:   2.0,
 		Clr:  clr,
 	}
@@ -254,7 +254,7 @@ func (blnkr *Blnkr) makeInWv(clr RGB) {
 func (blnkr *Blnkr) makeOutWv(edx int, clr RGB) {
 	wv := Wv{
 		SD:   1.0,
-		Dlta: 0.2,
+		Dlta: 0.02,
 		Xs:   4.0,
 		Ys:   1.0,
 		Clr:  clr,
